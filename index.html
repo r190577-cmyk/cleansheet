@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlankRow Cleaner v2.0 — Smart Excel & CSV Fixer</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #080b14;
+    --surface: #0e1220;
+    --card: #131825;
+    --border: #1e2640;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,0.15);
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --purple: #8b5cf6;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--display);
+    min-height: 100vh;
+    background-image: radial-gradient(ellipse at 20% 20%, rgba(59,130,246,0.05) 0%, transparent 60%),
+                      radial-gradient(ellipse at 80% 80%, rgba(16,185,129,0.04) 0%, transparent 60%);
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+
+  /* HEADER */
+  .header { text-align: center; margin-bottom: 44px; }
+  .logo-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-glow); border: 1px solid rgba(59,130,246,0.3);
+    padding: 6px 16px; border-radius: 100px; margin-bottom: 20px;
+    font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 1px;
+  }
+  .logo-dot { width:8px; height:8px; background:var(--accent); border-radius:50%; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+  h1 { font-size: clamp(2rem,5vw,3.5rem); font-weight:800; letter-spacing:-1px; line-height:1.1; margin-bottom:12px; }
+  h1 .blue { color: var(--accent); }
+  .subtitle { color:var(--muted); font-size:15px; max-width:540px; margin:0 auto; line-height:1.6; }
+  .version-chips { display:flex; justify-content:center; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .chip {
+    font-family:var(--mono); font-size:11px; padding:3px 10px; border-radius:100px;
+    border:1px solid; letter-spacing:1px;
+  }
+  .chip.blue  { color:var(--accent);  border-color:rgba(59,130,246,0.4);  background:rgba(59,130,246,0.08); }
+  .chip.green { color:var(--green);   border-color:rgba(16,185,129,0.4);  background:rgba(16,185,129,0.08); }
+  .chip.red   { color:var(--red);     border-color:rgba(239,68,68,0.4);   background:rgba(239,68,68,0.08); }
+  .chip.purple{ color:var(--purple);  border-color:rgba(139,92,246,0.4);  background:rgba(139,92,246,0.08); }
+
+  /* UPLOAD */
+  .upload-zone {
+    border:2px dashed var(--border); border-radius:20px; padding:50px 40px;
+    text-align:center; cursor:pointer; transition:all 0.3s;
+    background:var(--surface); margin-bottom:24px; position:relative; overflow:hidden;
+  }
+  .upload-zone::before { content:''; position:absolute; inset:0; background:var(--accent-glow); opacity:0; transition:opacity 0.3s; }
+  .upload-zone:hover, .upload-zone.drag { border-color:var(--accent); }
+  .upload-zone:hover::before, .upload-zone.drag::before { opacity:1; }
+  .upload-icon { width:68px; height:68px; margin:0 auto 18px; background:var(--accent-glow); border-radius:16px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(59,130,246,0.3); font-size:30px; }
+  .upload-title { font-size:18px; font-weight:700; margin-bottom:6px; }
+  .upload-sub { color:var(--muted); font-size:13px; font-family:var(--mono); }
+  #fileInput { display:none; }
+
+  /* COLUMN SELECTOR */
+  .col-selector { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px 28px; margin-bottom:24px; display:none; }
+  .col-selector-title { font-size:15px; font-weight:700; margin-bottom:6px; }
+  .col-selector-sub { font-size:13px; color:var(--muted); font-family:var(--mono); margin-bottom:16px; }
+  .col-checkboxes { display:flex; flex-wrap:wrap; gap:10px; }
+  .col-check {
+    display:flex; align-items:center; gap:8px; cursor:pointer;
+    background:var(--surface); border:1px solid var(--border);
+    padding:8px 14px; border-radius:10px; font-size:13px; font-family:var(--mono);
+    transition:all 0.2s; user-select:none;
+  }
+  .col-check:hover { border-color:var(--accent); }
+  .col-check.selected { border-color:var(--accent); background:var(--accent-glow); color:var(--accent); }
+  .col-check input { display:none; }
+  .col-actions { display:flex; gap:10px; margin-top:14px; }
+  .btn-sm {
+    padding:8px 16px; border-radius:8px; font-family:var(--display); font-size:13px;
+    font-weight:700; cursor:pointer; border:1px solid var(--border); background:transparent;
+    color:var(--muted); transition:all 0.2s;
+  }
+  .btn-sm:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-sm.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn-sm.primary:hover { background:#2563eb; }
+
+  /* STATS */
+  .stats-bar { display:none; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+  .stat-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px 20px; display:flex; align-items:center; gap:14px; }
+  .stat-icon { font-size:26px; }
+  .stat-num { font-size:24px; font-weight:800; font-family:var(--mono); }
+  .stat-label { font-size:11px; color:var(--muted); margin-top:2px; }
+  .stat-card.danger .stat-num { color:var(--red); }
+  .stat-card.success .stat-num { color:var(--green); }
+  .stat-card.warn .stat-num { color:var(--yellow); }
+  .stat-card.info .stat-num { color:var(--accent); }
+
+  /* TABS for before/after */
+  .tabs { display:none; margin-bottom:0; }
+  .tab-bar { display:flex; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:14px 14px 0 0; padding:8px 8px 0; border-bottom:none; }
+  .tab-btn {
+    padding:10px 22px; border-radius:10px 10px 0 0; font-family:var(--display);
+    font-size:14px; font-weight:700; cursor:pointer; border:none;
+    background:transparent; color:var(--muted); transition:all 0.2s;
+  }
+  .tab-btn.active { background:var(--card); color:var(--text); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+  .tab-panel { background:var(--card); border:1px solid var(--border); border-top:none; border-radius:0 0 14px 14px; overflow:hidden; margin-bottom:24px; }
+
+  /* TABLE */
+  .table-wrap { overflow-x:auto; max-height:420px; overflow-y:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th {
+    background:var(--surface); padding:12px 14px; text-align:left;
+    font-family:var(--mono); font-size:11px; color:var(--muted);
+    border-bottom:1px solid var(--border); white-space:nowrap;
+    letter-spacing:1px; text-transform:uppercase; position:sticky; top:0; z-index:1;
+  }
+  tbody tr { border-bottom:1px solid rgba(30,38,64,0.5); transition:background 0.15s; }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:rgba(59,130,246,0.04); }
+  tbody td { padding:10px 14px; font-family:var(--mono); font-size:12px; }
+  tbody tr.complete td:first-child { border-left:3px solid var(--green); }
+  tbody tr.incomplete { background:rgba(239,68,68,0.04); }
+  tbody tr.incomplete td:first-child { border-left:3px solid var(--red); }
+  .empty-cell { background:rgba(239,68,68,0.15); border-radius:5px; padding:2px 8px; color:var(--red); font-size:10px; border:1px dashed rgba(239,68,68,0.4); }
+  .row-num { color:var(--muted); font-size:11px; }
+  .incomplete-badge { display:inline-block; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:var(--red); font-size:10px; padding:2px 7px; border-radius:100px; font-family:var(--mono); white-space:nowrap; }
+  .complete-badge { display:inline-block; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); color:var(--green); font-size:10px; padding:2px 7px; border-radius:100px; font-family:var(--mono); white-space:nowrap; }
+  .checked-col { background:rgba(59,130,246,0.06); }
+
+  /* ACTION BOX */
+  .action-box {
+    background:var(--card); border:1px solid rgba(239,68,68,0.3); border-radius:16px;
+    padding:24px 28px; display:none; align-items:center; justify-content:space-between;
+    gap:20px; margin-bottom:24px; animation:slideUp 0.4s ease;
+  }
+  @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  .action-title { font-size:17px; font-weight:700; margin-bottom:6px; }
+  .action-sub { color:var(--muted); font-size:13px; line-height:1.5; }
+  .action-sub strong { color:var(--red); }
+  .btn-group { display:flex; gap:10px; flex-shrink:0; flex-wrap:wrap; }
+  .btn { padding:13px 24px; border-radius:10px; font-family:var(--display); font-size:14px; font-weight:700; cursor:pointer; border:none; transition:all 0.2s; white-space:nowrap; }
+  .btn-delete { background:var(--red); color:#fff; }
+  .btn-delete:hover { background:#dc2626; transform:translateY(-1px); box-shadow:0 6px 18px rgba(239,68,68,0.3); }
+  .btn-cancel { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .btn-cancel:hover { border-color:var(--muted); color:var(--text); }
+
+  /* SUCCESS / UNDO */
+  .success-box {
+    background:var(--card); border:1px solid rgba(16,185,129,0.3); border-radius:16px;
+    padding:24px 28px; display:none; align-items:center; justify-content:space-between;
+    gap:20px; animation:slideUp 0.4s ease;
+  }
+  .success-title { font-size:18px; font-weight:700; color:var(--green); margin-bottom:5px; }
+  .success-sub { color:var(--muted); font-size:13px; }
+  .btn-download { background:var(--green); color:#000; padding:13px 24px; border-radius:10px; font-family:var(--display); font-size:14px; font-weight:700; cursor:pointer; border:none; white-space:nowrap; transition:all 0.2s; }
+  .btn-download:hover { background:#059669; transform:translateY(-1px); box-shadow:0 6px 18px rgba(16,185,129,0.3); }
+  .btn-undo { background:rgba(245,158,11,0.12); color:var(--yellow); border:1px solid rgba(245,158,11,0.35); padding:13px 20px; border-radius:10px; font-family:var(--display); font-size:14px; font-weight:700; cursor:pointer; white-space:nowrap; transition:all 0.2s; }
+  .btn-undo:hover { background:rgba(245,158,11,0.2); }
+  .btn-reset { background:transparent; color:var(--muted); border:1px solid var(--border); padding:13px 18px; border-radius:10px; font-family:var(--display); font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; }
+  .btn-reset:hover { border-color:var(--muted); color:var(--text); }
+
+  /* HOW IT WORKS */
+  .how-section { margin-top:56px; }
+  .how-title { font-size:20px; font-weight:800; margin-bottom:20px; text-align:center; color:var(--muted); }
+  .steps { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .step { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px 18px; text-align:center; }
+  .step-num { width:34px; height:34px; background:var(--accent-glow); border:1px solid rgba(59,130,246,0.3); border-radius:9px; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:13px; color:var(--accent); margin:0 auto 12px; font-weight:600; }
+  .step-icon { font-size:26px; margin-bottom:8px; }
+  .step h3 { font-size:13px; font-weight:700; margin-bottom:5px; }
+  .step p { font-size:11px; color:var(--muted); line-height:1.5; font-family:var(--mono); }
+
+  .footer { text-align:center; margin-top:50px; color:var(--muted); font-size:12px; font-family:var(--mono); }
+  .footer strong { color:var(--accent); }
+
+  @media(max-width:700px) {
+    .stats-bar { grid-template-columns:repeat(2,1fr); }
+    .steps { grid-template-columns:repeat(2,1fr); }
+    .action-box, .success-box { flex-direction:column; }
+    .btn-group { width:100%; }
+    .btn,.btn-download,.btn-undo,.btn-reset { width:100%; text-align:center; }
+    .tab-btn { padding:8px 14px; font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo-badge"><div class="logo-dot"></div> BLANK ROW CLEANER v2.0</div>
+    <h1>Fix Your Excel<br><span class="blue">In One Click.</span></h1>
+    <p class="subtitle">Upload Excel or CSV — we detect every row with missing data, show before & after, then clean it instantly.</p>
+    <div class="version-chips">
+      <span class="chip blue">✔ Choose Columns</span>
+      <span class="chip green">✔ Before & After Preview</span>
+      <span class="chip red">✔ CSV Support</span>
+      <span class="chip purple">✔ Undo Delete</span>
+    </div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">📊</div>
+    <div class="upload-title">Drop your file here</div>
+    <div class="upload-sub">or click to browse &nbsp;·&nbsp; .xlsx / .xls / .csv supported</div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv"/>
+  </div>
+
+  <!-- COLUMN SELECTOR -->
+  <div class="col-selector" id="colSelector">
+    <div class="col-selector-title">🎯 Choose which columns to check for blanks</div>
+    <div class="col-selector-sub">Only selected columns will be checked. Unselected columns are ignored even if blank.</div>
+    <div class="col-checkboxes" id="colCheckboxes"></div>
+    <div class="col-actions">
+      <button class="btn-sm" onclick="selectAll()">Select All</button>
+      <button class="btn-sm" onclick="selectNone()">Clear All</button>
+      <button class="btn-sm primary" onclick="applyColumnFilter()">🔍 Scan Now</button>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-card info">
+      <div class="stat-icon">📋</div>
+      <div><div class="stat-num" id="statTotal">0</div><div class="stat-label">Total Rows</div></div>
+    </div>
+    <div class="stat-card danger">
+      <div class="stat-icon">🚨</div>
+      <div><div class="stat-num" id="statBad">0</div><div class="stat-label">Incomplete Rows</div></div>
+    </div>
+    <div class="stat-card success">
+      <div class="stat-icon">✅</div>
+      <div><div class="stat-num" id="statGood">0</div><div class="stat-label">Complete Rows</div></div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-icon">📊</div>
+      <div><div class="stat-num" id="statCols">0</div><div class="stat-label">Columns Checked</div></div>
+    </div>
+  </div>
+
+  <!-- BEFORE / AFTER TABS -->
+  <div class="tabs" id="tabsSection">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('before')">📋 Before (Original)</button>
+      <button class="tab-btn" onclick="switchTab('after')">✅ After (Clean Preview)</button>
+    </div>
+    <div class="tab-panel">
+      <div class="tab-content active" id="tab-before">
+        <div class="table-wrap"><table id="beforeTable"></table></div>
+      </div>
+      <div class="tab-content" id="tab-after">
+        <div class="table-wrap"><table id="afterTable"></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTION BOX -->
+  <div class="action-box" id="actionBox">
+    <div>
+      <div class="action-title">🚨 Incomplete Rows Detected!</div>
+      <div class="action-sub">Found <strong id="badCount">0</strong> rows with missing data in the checked columns. Switch to the <strong style="color:var(--green)">After tab</strong> above to preview the clean result. Delete them?</div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-cancel" onclick="cancelDelete()">Keep All</button>
+      <button class="btn btn-delete" onclick="doDelete()">🗑 Delete & Download</button>
+    </div>
+  </div>
+
+  <!-- SUCCESS BOX -->
+  <div class="success-box" id="successBox">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="font-size:38px;">🎉</div>
+      <div>
+        <div class="success-title">Clean file ready!</div>
+        <div class="success-sub" id="successSub">All incomplete rows removed.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn-reset" onclick="resetApp()">Upload Another</button>
+      <button class="btn-undo" id="undoBtn" onclick="undoDelete()">↩ Undo Delete</button>
+      <button class="btn-download" onclick="triggerDownload()">⬇ Download Clean File</button>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div class="how-section">
+    <div class="how-title">How It Works</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div><div class="step-icon">📂</div>
+        <h3>Upload File</h3><p>Excel or CSV — any size, any columns</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div><div class="step-icon">🎯</div>
+        <h3>Pick Columns</h3><p>Choose which columns to check for blanks</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div><div class="step-icon">👀</div>
+        <h3>Before & After</h3><p>Preview original and clean data side by side</p>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div><div class="step-icon">⬇</div>
+        <h3>Download & Undo</h3><p>Download clean file or undo if needed</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Built with ❤️ &nbsp;·&nbsp; <strong>100% Client-Side</strong> — your data never leaves your browser &nbsp;·&nbsp; v2.0
+  </div>
+
+</div>
+
+<script>
+  let parsedData = [], headers = [], totalCols = 0;
+  let incompleteRows = [], cleanData = [], selectedCols = [];
+  let downloadBlob = null, originalFileName = '';
+  let undoSnapshot = null; // for undo
+
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput  = document.getElementById('fileInput');
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault(); uploadZone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+
+  function processFile(file) {
+    originalFileName = file.name.replace(/\.[^.]+$/, '');
+    const isCSV = file.name.toLowerCase().endsWith('.csv');
+    const reader = new FileReader();
+    reader.onload = e => {
+      let raw;
+      if (isCSV) {
+        // Parse CSV manually using XLSX
+        const wb = XLSX.read(e.target.result, { type: 'binary', raw: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      } else {
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      }
+
+      if (!raw || raw.length < 2) { alert('File appears empty or has no data rows.'); return; }
+
+      // Detect real columns from header row
+      const rawHeaders = raw[0] || [];
+      totalCols = 0;
+      for (let c = 0; c < rawHeaders.length; c++) {
+        if (rawHeaders[c] !== undefined && rawHeaders[c] !== null && String(rawHeaders[c]).trim() !== '') {
+          totalCols = c + 1;
+        }
+      }
+      if (totalCols === 0) { alert('No headers found in first row.'); return; }
+      headers = rawHeaders.slice(0, totalCols).map(h => String(h).trim());
+
+      // Filter fully empty rows
+      parsedData = raw.slice(1).filter(row => {
+        for (let c = 0; c < totalCols; c++) {
+          if (!isEmpty(row[c])) return true;
+        }
+        return false;
+      });
+
+      // Default: all columns selected
+      selectedCols = headers.map((_, i) => i);
+
+      // Show column selector
+      buildColumnSelector();
+      document.getElementById('colSelector').style.display = 'block';
+
+      // Auto scan with all cols
+      applyColumnFilter();
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  function isEmpty(val) {
+    return val === undefined || val === null || String(val).trim() === '';
+  }
+
+  function buildColumnSelector() {
+    const box = document.getElementById('colCheckboxes');
+    box.innerHTML = '';
+    headers.forEach((h, i) => {
+      const div = document.createElement('div');
+      div.className = 'col-check selected';
+      div.dataset.col = i;
+      div.innerHTML = `<input type="checkbox" checked/><span>${h}</span>`;
+      div.onclick = () => toggleCol(div, i);
+      box.appendChild(div);
+    });
+  }
+
+  function toggleCol(el, idx) {
+    el.classList.toggle('selected');
+    if (selectedCols.includes(idx)) selectedCols = selectedCols.filter(c => c !== idx);
+    else selectedCols.push(idx);
+  }
+
+  function selectAll() {
+    selectedCols = headers.map((_, i) => i);
+    document.querySelectorAll('.col-check').forEach(el => el.classList.add('selected'));
+  }
+
+  function selectNone() {
+    selectedCols = [];
+    document.querySelectorAll('.col-check').forEach(el => el.classList.remove('selected'));
+  }
+
+  function applyColumnFilter() {
+    if (selectedCols.length === 0) { alert('Please select at least one column to check!'); return; }
+
+    incompleteRows = [];
+    cleanData = [];
+
+    parsedData.forEach((row, i) => {
+      const hasBlank = selectedCols.some(c => isEmpty(row[c]));
+      if (hasBlank) incompleteRows.push(i);
+      else cleanData.push(Array.from({ length: totalCols }, (_, c) => row[c] !== undefined ? row[c] : ''));
+    });
+
+    // Stats
+    document.getElementById('statTotal').textContent = parsedData.length;
+    document.getElementById('statBad').textContent   = incompleteRows.length;
+    document.getElementById('statGood').textContent  = parsedData.length - incompleteRows.length;
+    document.getElementById('statCols').textContent  = selectedCols.length;
+    document.getElementById('statsBar').style.display = 'grid';
+
+    // Render both tables
+    renderTable('beforeTable', parsedData, true);
+    renderTable('afterTable', cleanData, false);
+    document.getElementById('tabsSection').style.display = 'block';
+
+    // Reset boxes
+    document.getElementById('successBox').style.display = 'none';
+    document.getElementById('actionBox').style.display  = 'none';
+
+    if (incompleteRows.length === 0) {
+      document.getElementById('successSub').textContent = 'Your file is already clean — no incomplete rows found! 🎉';
+      document.getElementById('undoBtn').style.display = 'none';
+      document.getElementById('successBox').style.display = 'flex';
+    } else {
+      document.getElementById('badCount').textContent    = incompleteRows.length;
+      document.getElementById('actionBox').style.display = 'flex';
+    }
+  }
+
+  function renderTable(tableId, data, showStatus) {
+    const table = document.getElementById(tableId);
+    let html = '<thead><tr><th>#</th>';
+    headers.forEach((h, i) => {
+      const isChecked = selectedCols.includes(i);
+      html += `<th class="${isChecked ? 'checked-col' : ''}">${h}${isChecked ? ' 🔍' : ''}</th>`;
+    });
+    if (showStatus) html += '<th>Status</th>';
+    html += '</tr></thead><tbody>';
+
+    const max = 200;
+    (data.length > max ? data.slice(0, max) : data).forEach((row, i) => {
+      const bad = showStatus && incompleteRows.includes(i);
+      html += `<tr class="${bad ? 'incomplete' : 'complete'}"><td class="row-num">${i+1}</td>`;
+      for (let c = 0; c < totalCols; c++) {
+        const v = row[c] !== undefined ? String(row[c]).trim() : '';
+        const isChecked = selectedCols.includes(c);
+        html += `<td class="${isChecked ? 'checked-col' : ''}">`;
+        html += (v === '' && isChecked) ? `<span class="empty-cell">BLANK</span>` : v;
+        html += '</td>';
+      }
+      if (showStatus) html += bad ? `<td><span class="incomplete-badge">INCOMPLETE</span></td>` : `<td><span class="complete-badge">COMPLETE</span></td>`;
+      html += '</tr>';
+    });
+    if (data.length > max) {
+      html += `<tr><td colspan="${totalCols + (showStatus ? 2 : 1)}" style="text-align:center;color:var(--muted);font-size:11px;font-family:var(--mono);padding:14px;">... and ${data.length - max} more rows</td></tr>`;
+    }
+    html += '</tbody>';
+    table.innerHTML = html;
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', (i === 0) === (tab === 'before')));
+    document.getElementById('tab-before').classList.toggle('active', tab === 'before');
+    document.getElementById('tab-after').classList.toggle('active', tab === 'after');
+  }
+
+  function cancelDelete() { document.getElementById('actionBox').style.display = 'none'; }
+
+  function doDelete() {
+    // Save undo snapshot
+    undoSnapshot = { parsedData: [...parsedData], incompleteRows: [...incompleteRows], cleanData: [...cleanData] };
+
+    buildDownload(cleanData);
+    document.getElementById('actionBox').style.display = 'none';
+    document.getElementById('successSub').textContent  = `Removed ${incompleteRows.length} incomplete row(s). ${cleanData.length} clean rows kept.`;
+    document.getElementById('undoBtn').style.display   = 'inline-block';
+    document.getElementById('successBox').style.display = 'flex';
+  }
+
+  function undoDelete() {
+    if (!undoSnapshot) return;
+    // Restore
+    parsedData    = undoSnapshot.parsedData;
+    incompleteRows = undoSnapshot.incompleteRows;
+    cleanData     = undoSnapshot.cleanData;
+    undoSnapshot  = null;
+
+    renderTable('beforeTable', parsedData, true);
+    renderTable('afterTable', cleanData, false);
+
+    document.getElementById('successBox').style.display = 'none';
+    document.getElementById('badCount').textContent     = incompleteRows.length;
+    document.getElementById('actionBox').style.display  = 'flex';
+
+    alert('↩ Undo successful! Your original data is restored.');
+  }
+
+  function buildDownload(data) {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Clean Data');
+    downloadBlob = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  }
+
+  function triggerDownload() {
+    if (!downloadBlob) return;
+    const url = URL.createObjectURL(new Blob([downloadBlob], { type: 'application/octet-stream' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${originalFileName}_cleaned.xlsx` });
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  function resetApp() {
+    parsedData = []; headers = []; totalCols = 0;
+    incompleteRows = []; cleanData = []; selectedCols = [];
+    downloadBlob = null; undoSnapshot = null;
+    ['colSelector','statsBar','tabsSection','actionBox','successBox'].forEach(id => {
+      document.getElementById(id).style.display = 'none';
+    });
+    document.getElementById('fileInput').value = '';
+  }
+</script>
+</body>
+</html>
